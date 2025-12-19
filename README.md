@@ -29,6 +29,8 @@ A powerful and flexible Kubernetes [Model Context Protocol (MCP)](https://blog.m
   - **Run** a container image in a pod and optionally expose it.
 - **✅ Namespaces**: List Kubernetes Namespaces.
 - **✅ Events**: View Kubernetes events in all namespaces or in a specific namespace.
+  - **Subscribe** to real-time event notifications via HTTP/SSE transport (see [Event Subscriptions](#event-subscriptions) below).
+  - Two subscription modes: flexible event stream and fault watcher with automatic log enrichment.
 - **✅ Projects**: List OpenShift Projects.
 - **☸️ Helm**:
   - **Install** a Helm chart in the current or provided namespace.
@@ -247,6 +249,122 @@ The server will:
 **Note**: Changing `kubeconfig` or cluster-related settings requires a server restart. Only tool configurations, log levels, and output formats can be reloaded dynamically.
 
 **Note**: SIGHUP reload is not available on Windows. On Windows, restart the server to reload configuration.
+
+## Event Subscriptions <a id="event-subscriptions"></a>
+
+The Kubernetes MCP server supports real-time event subscriptions for receiving push notifications about Kubernetes events. This feature requires using the HTTP/SSE transport (start the server with `--port`).
+
+### Prerequisites
+
+Before receiving event notifications, clients **must** call the `logging/setLevel` MCP method to set their desired log level (e.g., `info`, `debug`, or higher). This is standard MCP behavior for receiving log notifications. Event notifications are delivered via the `notifications/message` mechanism with categorized logger names.
+
+### Subscription Modes
+
+Two subscription modes are available:
+
+1. **Flexible Event Stream** (`mode=events`): Receive notifications for all matching events (Normal and/or Warning events based on filters). Ideal for monitoring general cluster activity.
+
+2. **Fault Watcher** (`mode=faults`): Receive notifications for Warning events only, with automatic pod log enrichment. When a Warning event targets a Pod, the server automatically captures current and previous container logs, detects panics/crashes, and includes this information in the notification. This mode is optimized for troubleshooting and incident response.
+
+### Subscription Filters
+
+All filters are optional. When no filters are specified, the subscription receives all events cluster-wide:
+
+- `namespaces`: Array of namespace names to watch (empty = all namespaces)
+- `labelSelector`: Kubernetes label selector for filtering by involved object labels (e.g., `app=nginx,tier=frontend`)
+- `involvedKind`: Filter by involved object kind (e.g., `Pod`, `Deployment`)
+- `involvedName`: Filter by involved object name
+- `involvedNamespace`: Filter by involved object namespace
+- `type`: Filter by event type (`Normal` or `Warning`)
+- `reason`: Filter by event reason prefix (e.g., `BackOff`, `Failed`)
+
+### Configuration
+
+Event subscription limits can be configured via CLI flags or configuration file:
+
+```bash
+kubernetes-mcp-server --port 8080 \
+  --max-subscriptions-per-session 10 \
+  --max-subscriptions-global 100 \
+  --max-log-captures-per-cluster 5 \
+  --max-log-captures-global 20 \
+  --max-log-bytes-per-container 10240 \
+  --max-containers-per-notification 5
+```
+
+Or in `config.toml`:
+
+```toml
+max_subscriptions_per_session = 10
+max_subscriptions_global = 100
+max_log_captures_per_cluster = 5
+max_log_captures_global = 20
+max_log_bytes_per_container = 10240
+max_containers_per_notification = 5
+```
+
+### Available Tools
+
+- `events_subscribe`: Create a new event subscription
+- `events_unsubscribe`: Cancel an active subscription by ID
+- `events_list_subscriptions`: List all active subscriptions for the current session
+
+### Notification Format
+
+Event notifications are delivered via `notifications/message` with structured data in the `data` field:
+
+**Flexible Event Stream** (logger: `kubernetes/events`, level: `info`):
+```json
+{
+  "subscriptionId": "sub-123",
+  "cluster": "dev-cluster",
+  "event": {
+    "namespace": "kube-system",
+    "timestamp": "2025-01-15T12:34:56Z",
+    "type": "Warning",
+    "reason": "BackOff",
+    "message": "Back-off restarting failed container",
+    "labels": {"app": "nginx"},
+    "involvedObject": {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "name": "nginx-123",
+      "namespace": "default"
+    }
+  }
+}
+```
+
+**Fault Watcher** (logger: `kubernetes/faults`, level: `warning`):
+```json
+{
+  "subscriptionId": "sub-456",
+  "cluster": "prod",
+  "event": { "...event details..." },
+  "logs": [
+    {
+      "container": "web",
+      "previous": false,
+      "hasPanic": true,
+      "sample": "panic: runtime error\nstack trace...\n"
+    }
+  ]
+}
+```
+
+### Session Lifecycle
+
+- Subscriptions are automatically cleaned up when a session disconnects
+- The server monitors active sessions every 30 seconds and cancels subscriptions for disconnected sessions
+- Subscriptions are isolated per session - one session cannot unsubscribe another session's subscriptions
+
+### Transport Requirement
+
+Event subscriptions require an HTTP/SSE transport. If you attempt to subscribe over stdio (without `--port`), you will receive an error message:
+
+```
+event subscriptions require an HTTP/SSE transport. Start the server with --port and connect via HTTP
+```
 
 #### Example: Using Both Config Methods
 

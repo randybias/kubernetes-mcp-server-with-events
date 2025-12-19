@@ -57,24 +57,31 @@ kubernetes-mcp-server --port 8080 --disable-multi-cluster
 )
 
 const (
-	flagVersion              = "version"
-	flagLogLevel             = "log-level"
-	flagConfig               = "config"
-	flagConfigDir            = "config-dir"
-	flagPort                 = "port"
-	flagSSEBaseUrl           = "sse-base-url"
-	flagKubeconfig           = "kubeconfig"
-	flagToolsets             = "toolsets"
-	flagListOutput           = "list-output"
-	flagReadOnly             = "read-only"
-	flagDisableDestructive   = "disable-destructive"
-	flagStateless            = "stateless"
-	flagRequireOAuth         = "require-oauth"
-	flagOAuthAudience        = "oauth-audience"
-	flagAuthorizationURL     = "authorization-url"
-	flagServerUrl            = "server-url"
-	flagCertificateAuthority = "certificate-authority"
-	flagDisableMultiCluster  = "disable-multi-cluster"
+	flagVersion                      = "version"
+	flagLogLevel                     = "log-level"
+	flagConfig                       = "config"
+	flagConfigDir                    = "config-dir"
+	flagPort                         = "port"
+	flagSSEBaseUrl                   = "sse-base-url"
+	flagKubeconfig                   = "kubeconfig"
+	flagToolsets                     = "toolsets"
+	flagListOutput                   = "list-output"
+	flagReadOnly                     = "read-only"
+	flagDisableDestructive           = "disable-destructive"
+	flagStateless                    = "stateless"
+	flagRequireOAuth                 = "require-oauth"
+	flagOAuthAudience                = "oauth-audience"
+	flagValidateToken                = "validate-token"
+	flagAuthorizationURL             = "authorization-url"
+	flagServerUrl                    = "server-url"
+	flagCertificateAuthority         = "certificate-authority"
+	flagDisableMultiCluster          = "disable-multi-cluster"
+	flagMaxSubscriptionsPerSession   = "max-subscriptions-per-session"
+	flagMaxSubscriptionsGlobal       = "max-subscriptions-global"
+	flagMaxLogCapturesPerCluster     = "max-log-captures-per-cluster"
+	flagMaxLogCapturesGlobal         = "max-log-captures-global"
+	flagMaxLogBytesPerContainer      = "max-log-bytes-per-container"
+	flagMaxContainersPerNotification = "max-containers-per-notification"
 )
 
 type MCPServerOptions struct {
@@ -94,6 +101,13 @@ type MCPServerOptions struct {
 	CertificateAuthority string
 	ServerURL            string
 	DisableMultiCluster  bool
+
+	MaxSubscriptionsPerSession   int
+	MaxSubscriptionsGlobal       int
+	MaxLogCapturesPerCluster     int
+	MaxLogCapturesGlobal         int
+	MaxLogBytesPerContainer      int
+	MaxContainersPerNotification int
 
 	ConfigPath   string
 	ConfigDir    string
@@ -154,6 +168,12 @@ func NewMCPServer(streams genericiooptions.IOStreams) *cobra.Command {
 	cmd.Flags().StringVar(&o.CertificateAuthority, flagCertificateAuthority, o.CertificateAuthority, "Certificate authority path to verify certificates. Optional. Only valid if require-oauth is enabled.")
 	_ = cmd.Flags().MarkHidden(flagCertificateAuthority)
 	cmd.Flags().BoolVar(&o.DisableMultiCluster, flagDisableMultiCluster, o.DisableMultiCluster, "Disable multi cluster tools. Optional. If true, all tools will be run against the default cluster/context.")
+	cmd.Flags().IntVar(&o.MaxSubscriptionsPerSession, flagMaxSubscriptionsPerSession, 10, "Maximum number of event subscriptions per session (default: 10)")
+	cmd.Flags().IntVar(&o.MaxSubscriptionsGlobal, flagMaxSubscriptionsGlobal, 100, "Maximum number of event subscriptions globally across all sessions (default: 100)")
+	cmd.Flags().IntVar(&o.MaxLogCapturesPerCluster, flagMaxLogCapturesPerCluster, 5, "Maximum concurrent log capture operations per cluster for fault mode (default: 5)")
+	cmd.Flags().IntVar(&o.MaxLogCapturesGlobal, flagMaxLogCapturesGlobal, 20, "Maximum concurrent log capture operations globally for fault mode (default: 20)")
+	cmd.Flags().IntVar(&o.MaxLogBytesPerContainer, flagMaxLogBytesPerContainer, 10240, "Maximum bytes of log data to capture per container in fault mode (default: 10240, 10KB)")
+	cmd.Flags().IntVar(&o.MaxContainersPerNotification, flagMaxContainersPerNotification, 5, "Maximum number of containers to include logs for in fault notifications (default: 5)")
 
 	return cmd
 }
@@ -224,6 +244,24 @@ func (m *MCPServerOptions) loadFlags(cmd *cobra.Command) {
 	}
 	if cmd.Flag(flagDisableMultiCluster).Changed && m.DisableMultiCluster {
 		m.StaticConfig.ClusterProviderStrategy = api.ClusterProviderDisabled
+	}
+	if cmd.Flag(flagMaxSubscriptionsPerSession).Changed {
+		m.StaticConfig.MaxSubscriptionsPerSession = m.MaxSubscriptionsPerSession
+	}
+	if cmd.Flag(flagMaxSubscriptionsGlobal).Changed {
+		m.StaticConfig.MaxSubscriptionsGlobal = m.MaxSubscriptionsGlobal
+	}
+	if cmd.Flag(flagMaxLogCapturesPerCluster).Changed {
+		m.StaticConfig.MaxLogCapturesPerCluster = m.MaxLogCapturesPerCluster
+	}
+	if cmd.Flag(flagMaxLogCapturesGlobal).Changed {
+		m.StaticConfig.MaxLogCapturesGlobal = m.MaxLogCapturesGlobal
+	}
+	if cmd.Flag(flagMaxLogBytesPerContainer).Changed {
+		m.StaticConfig.MaxLogBytesPerContainer = m.MaxLogBytesPerContainer
+	}
+	if cmd.Flag(flagMaxContainersPerNotification).Changed {
+		m.StaticConfig.MaxContainersPerNotification = m.MaxContainersPerNotification
 	}
 }
 

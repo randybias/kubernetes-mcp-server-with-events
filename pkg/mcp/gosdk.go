@@ -39,12 +39,21 @@ func ServerToolToGoSdkTool(s *Server, tool api.ServerTool) (*mcp.Tool, mcp.ToolH
 			return nil, err
 		}
 
+		// Extract session ID from the request
+		sessionID := ""
+		if request.Session != nil {
+			sessionID = request.Session.ID()
+		}
+
 		result, err := tool.Handler(api.ToolHandlerParams{
 			Context:                ctx,
 			ExtendedConfigProvider: s.configuration,
 			KubernetesClient:       k,
 			ToolCallRequest:        toolCallRequest,
 			ListOutput:             s.configuration.ListOutput(),
+			SessionID:              sessionID,
+			EventManager:           s.eventAdapter,
+			Cluster:                cluster,
 		})
 		if err != nil {
 			return nil, err

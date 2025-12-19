@@ -49,6 +49,9 @@ func Serve(ctx context.Context, mcpServer *mcp.Server, staticConfig *config.Stat
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Start the session monitor goroutine for event subscriptions
+	go mcpServer.StartSessionMonitor(ctx)
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGHUP, syscall.SIGTERM)
 

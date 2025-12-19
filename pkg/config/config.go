@@ -74,6 +74,14 @@ type StaticConfig struct {
 	// If set to "in-cluster", the server will use the in cluster config
 	ClusterProviderStrategy string `toml:"cluster_provider_strategy,omitempty"`
 
+	// Event subscription configuration
+	MaxSubscriptionsPerSession   int `toml:"max_subscriptions_per_session,omitzero"`
+	MaxSubscriptionsGlobal       int `toml:"max_subscriptions_global,omitzero"`
+	MaxLogCapturesPerCluster     int `toml:"max_log_captures_per_cluster,omitzero"`
+	MaxLogCapturesGlobal         int `toml:"max_log_captures_global,omitzero"`
+	MaxLogBytesPerContainer      int `toml:"max_log_bytes_per_container,omitzero"`
+	MaxContainersPerNotification int `toml:"max_containers_per_notification,omitzero"`
+
 	// ClusterProvider-specific configurations
 	// This map holds raw TOML primitives that will be parsed by registered provider parsers
 	ClusterProviderConfigs map[string]toml.Primitive `toml:"cluster_provider_configs,omitempty"`

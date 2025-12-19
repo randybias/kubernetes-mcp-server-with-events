@@ -71,10 +71,30 @@ type ToolHandlerParams struct {
 	ExtendedConfigProvider
 	KubernetesClient
 	ToolCallRequest
-	ListOutput output.Output
+	ListOutput   output.Output
+	SessionID    string
+	EventManager EventSubscriptionManager
+	Cluster      string // The cluster/context name for this request
 }
 
 type ToolHandlerFunc func(params ToolHandlerParams) (*ToolCallResult, error)
+
+// EventSubscriptionManager defines the interface for managing event subscriptions.
+// This interface is defined in the api package to avoid circular dependencies.
+// The concrete types (SubscriptionFilters, Subscription) are from the events package.
+type EventSubscriptionManager interface {
+	// Create creates a new subscription and returns it.
+	// The filters parameter should be events.SubscriptionFilters.
+	// Returns *events.Subscription on success.
+	Create(sessionID, cluster, mode string, filters interface{}) (interface{}, error)
+
+	// CancelBySessionAndID cancels a subscription by ID for a specific session.
+	CancelBySessionAndID(sessionID, subscriptionID string) error
+
+	// ListSubscriptionsForSession returns all subscriptions for a session.
+	// Returns []*events.Subscription.
+	ListSubscriptionsForSession(sessionID string) interface{}
+}
 
 type Tool struct {
 	// The name of the tool.

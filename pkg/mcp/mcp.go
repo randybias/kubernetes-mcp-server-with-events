@@ -14,6 +14,7 @@ import (
 
 	"github.com/containers/kubernetes-mcp-server/pkg/api"
 	"github.com/containers/kubernetes-mcp-server/pkg/config"
+	"github.com/containers/kubernetes-mcp-server/pkg/events"
 	internalk8s "github.com/containers/kubernetes-mcp-server/pkg/kubernetes"
 	"github.com/containers/kubernetes-mcp-server/pkg/output"
 	"github.com/containers/kubernetes-mcp-server/pkg/prompts"
@@ -67,6 +68,27 @@ type Server struct {
 	enabledTools   []string
 	enabledPrompts []string
 	p              internalk8s.Provider
+	eventManager   *events.EventSubscriptionManager
+	eventAdapter   *events.ManagerAdapter
+}
+
+// GetMCPServer returns the underlying mcp.Server for use by other components.
+// This is used by EventSubscriptionManager to access active sessions.
+func (s *Server) GetMCPServer() *mcp.Server {
+	return s.server
+}
+
+// StartSessionMonitor starts the background session monitor for event subscriptions.
+// This should be called once when the server starts serving requests.
+func (s *Server) StartSessionMonitor(ctx context.Context) {
+	if s.eventManager != nil {
+		s.eventManager.StartSessionMonitor(ctx)
+	}
+}
+
+// GetEventManager returns the EventSubscriptionManager for use by tool handlers.
+func (s *Server) GetEventManager() *events.EventSubscriptionManager {
+	return s.eventManager
 }
 
 func NewServer(configuration Configuration, oidcProvider *oidc.Provider, httpClient *http.Client) (*Server, error) {
@@ -106,6 +128,15 @@ func NewServer(configuration Configuration, oidcProvider *oidc.Provider, httpCli
 		return nil, err
 	}
 	s.p.WatchTargets(s.reloadToolsets)
+
+	// Initialize EventSubscriptionManager with adapter for mcp.Server
+	mcpAdapter := events.NewMCPServerAdapter(s.server)
+	// Create getK8sClient function that uses the provider
+	getK8sClient := func(cluster string) (*internalk8s.Kubernetes, error) {
+		return s.p.GetDerivedKubernetes(context.Background(), cluster)
+	}
+	s.eventManager = events.NewEventSubscriptionManager(mcpAdapter, events.DefaultManagerConfig(), getK8sClient)
+	s.eventAdapter = &events.ManagerAdapter{EventSubscriptionManager: s.eventManager}
 
 	return s, nil
 }
@@ -212,6 +243,9 @@ func (s *Server) reloadToolsets() error {
 }
 
 func (s *Server) ServeStdio(ctx context.Context) error {
+	// Start the session monitor goroutine
+	go s.eventManager.StartSessionMonitor(ctx)
+
 	return s.server.Run(ctx, &mcp.LoggingTransport{Transport: &mcp.StdioTransport{}, Writer: os.Stderr})
 }
 
