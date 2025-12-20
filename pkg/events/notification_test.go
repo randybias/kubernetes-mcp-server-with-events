@@ -497,7 +497,7 @@ func (s *NotificationTestSuite) TestResourceFaultNotification_FaultID() {
 		session.SetLogLevel(mcp.LoggingLevel("warning"))
 		s.server.AddSession(session)
 
-		notification := ResourceFaultNotification{
+		notification := &ResourceFaultNotification{
 			SubscriptionID: "sub-123",
 			Cluster:        "test-cluster",
 			FaultID:        "a1b2c3d4e5f6g7h8",
@@ -519,8 +519,8 @@ func (s *NotificationTestSuite) TestResourceFaultNotification_FaultID() {
 		calls := session.GetLogCalls()
 		s.Require().Len(calls, 1)
 
-		data, ok := calls[0].Data.(ResourceFaultNotification)
-		s.True(ok, "data should be ResourceFaultNotification type")
+		data, ok := calls[0].Data.(*ResourceFaultNotification)
+		s.True(ok, "data should be *ResourceFaultNotification type")
 		s.Equal("a1b2c3d4e5f6g7h8", data.FaultID, "faultId should be present in notification")
 		s.NotEmpty(data.FaultID, "faultId should not be empty")
 	})
@@ -530,7 +530,7 @@ func (s *NotificationTestSuite) TestResourceFaultNotification_FaultID() {
 		session.SetLogLevel(mcp.LoggingLevel("warning"))
 		s.server.AddSession(session)
 
-		notification1 := ResourceFaultNotification{
+		notification1 := &ResourceFaultNotification{
 			SubscriptionID: "sub-123",
 			Cluster:        "cluster-1",
 			FaultID:        "fault-id-1",
@@ -544,7 +544,7 @@ func (s *NotificationTestSuite) TestResourceFaultNotification_FaultID() {
 			Timestamp: "2025-01-01T00:00:00Z",
 		}
 
-		notification2 := ResourceFaultNotification{
+		notification2 := &ResourceFaultNotification{
 			SubscriptionID: "sub-123",
 			Cluster:        "cluster-1",
 			FaultID:        "fault-id-2",
@@ -567,11 +567,11 @@ func (s *NotificationTestSuite) TestResourceFaultNotification_FaultID() {
 		calls := session.GetLogCalls()
 		s.Require().Len(calls, 2)
 
-		data1, ok := calls[0].Data.(ResourceFaultNotification)
+		data1, ok := calls[0].Data.(*ResourceFaultNotification)
 		s.True(ok)
 		s.Equal("fault-id-1", data1.FaultID)
 
-		data2, ok := calls[1].Data.(ResourceFaultNotification)
+		data2, ok := calls[1].Data.(*ResourceFaultNotification)
 		s.True(ok)
 		s.Equal("fault-id-2", data2.FaultID)
 

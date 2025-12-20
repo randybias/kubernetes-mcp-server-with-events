@@ -399,7 +399,7 @@ func (m *EventSubscriptionManager) sendNotification(sessionID string, logger str
 	}
 
 	// Include faultId in log for fault notifications to aid debugging
-	if faultNotif, ok := data.(ResourceFaultNotification); ok && faultNotif.FaultID != "" {
+	if faultNotif, ok := data.(*ResourceFaultNotification); ok && faultNotif.FaultID != "" {
 		klog.V(1).Infof("Sent notification to session %s (logger=%s, level=%s, faultId=%s)", sessionID, logger, level, faultNotif.FaultID)
 	} else {
 		klog.V(1).Infof("Sent notification to session %s (logger=%s, level=%s)", sessionID, logger, level)
