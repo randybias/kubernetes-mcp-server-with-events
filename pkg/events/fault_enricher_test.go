@@ -39,7 +39,7 @@ func (s *FaultEnricherSuite) TestNewFaultContextEnricherWithLimits() {
 func (s *FaultEnricherSuite) TestEnrich() {
 	s.Run("returns error for nil signal", func() {
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 		err := enricher.Enrich(context.Background(), nil, clientset)
 		s.Error(err)
 		s.Contains(err.Error(), "signal cannot be nil")
@@ -47,7 +47,7 @@ func (s *FaultEnricherSuite) TestEnrich() {
 
 	s.Run("skips log fetch when context already exists", func() {
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 
 		signal := &FaultSignal{
 			FaultType:     FaultTypeCrashLoop,
@@ -69,7 +69,7 @@ func (s *FaultEnricherSuite) TestEnrich() {
 
 	s.Run("skips log fetch for non-critical severity", func() {
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 
 		signal := &FaultSignal{
 			FaultType:     FaultTypePodCrash,
@@ -91,7 +91,7 @@ func (s *FaultEnricherSuite) TestEnrich() {
 
 	s.Run("skips log fetch for non-pod resources", func() {
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 
 		signal := &FaultSignal{
 			FaultType:   FaultTypeNodeUnhealthy,
@@ -111,7 +111,7 @@ func (s *FaultEnricherSuite) TestEnrich() {
 
 	s.Run("returns error for missing namespace", func() {
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 
 		signal := &FaultSignal{
 			FaultType:     FaultTypeCrashLoop,
@@ -132,7 +132,7 @@ func (s *FaultEnricherSuite) TestEnrich() {
 
 	s.Run("returns error for missing pod name", func() {
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 
 		signal := &FaultSignal{
 			FaultType:     FaultTypeCrashLoop,
@@ -170,7 +170,7 @@ func (s *FaultEnricherSuite) TestEnrich() {
 			},
 		}
 
-		clientset := fake.NewSimpleClientset(pod)
+		clientset := fake.NewClientset(pod)
 
 		signal := &FaultSignal{
 			FaultType:     FaultTypeCrashLoop,
@@ -262,7 +262,7 @@ func (s *FaultEnricherSuite) TestEnrichmentLogic() {
 		for _, tc := range testCases {
 			s.Run(tc.name, func() {
 				enricher := NewFaultContextEnricher()
-				clientset := fake.NewSimpleClientset()
+				clientset := fake.NewClientset()
 
 				// Create pod if needed
 				if tc.signal.Kind == "Pod" && tc.shouldFetchLogs {
@@ -307,7 +307,7 @@ func (s *FaultEnricherSuite) TestEnrichmentLogic() {
 func (s *FaultEnricherSuite) TestFetchPodLogs() {
 	s.Run("returns error when pod not found", func() {
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 
 		logs, err := enricher.fetchPodLogs(context.Background(), clientset, "default", "nonexistent-pod")
 		s.Error(err)
@@ -328,7 +328,7 @@ func (s *FaultEnricherSuite) TestFetchPodLogs() {
 			},
 		}
 
-		clientset := fake.NewSimpleClientset(pod)
+		clientset := fake.NewClientset(pod)
 
 		logs, err := enricher.fetchPodLogs(context.Background(), clientset, "default", "empty-pod")
 		s.NoError(err)
@@ -353,7 +353,7 @@ func (s *FaultEnricherSuite) TestFetchPodLogs() {
 			},
 		}
 
-		clientset := fake.NewSimpleClientset(pod)
+		clientset := fake.NewClientset(pod)
 
 		// Note: This test verifies the container limiting logic
 		// Actual log fetching will fail in fake client
@@ -365,7 +365,7 @@ func (s *FaultEnricherSuite) TestFetchPodLogs() {
 func (s *FaultEnricherSuite) TestGetPodLogs() {
 	s.Run("requests logs with correct options", func() {
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 
 		// Fake client may return fake logs or error
 		log, err := enricher.getPodLogs(context.Background(), clientset, "default", "test-pod", "app", false)
@@ -375,7 +375,7 @@ func (s *FaultEnricherSuite) TestGetPodLogs() {
 
 	s.Run("handles previous logs flag", func() {
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 
 		// Test with previous=true
 		log, err := enricher.getPodLogs(context.Background(), clientset, "default", "test-pod", "app", true)
@@ -436,7 +436,7 @@ func (s *FaultEnricherSuite) TestIntegrationWithRealDetectors() {
 		}
 
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 
 		// Since fake client doesn't support logs, we expect an error
 		// but the enricher should handle it gracefully
@@ -462,7 +462,7 @@ func (s *FaultEnricherSuite) TestIntegrationWithRealDetectors() {
 		}
 
 		enricher := NewFaultContextEnricher()
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewClientset()
 
 		originalContext := signal.Context
 		err := enricher.Enrich(context.Background(), &signal, clientset)
@@ -491,7 +491,7 @@ func (s *FaultEnricherSuite) TestEdgeCases() {
 				},
 			},
 		}
-		clientset := fake.NewSimpleClientset(pod)
+		clientset := fake.NewClientset(pod)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately

@@ -272,12 +272,12 @@ func (s *FaultSignalTestSuite) TestFaultSignal_EdgeCases() {
 // TestFaultSignal_TypedFields tests type safety of fields
 func (s *FaultSignalTestSuite) TestFaultSignal_TypedFields() {
 	s.Run("FaultType is strongly typed", func() {
-		var ft FaultType = FaultTypePodCrash
+		ft := FaultTypePodCrash
 		s.IsType(FaultType(""), ft)
 	})
 
 	s.Run("Severity is strongly typed", func() {
-		var sev Severity = SeverityCritical
+		sev := SeverityCritical
 		s.IsType(Severity(""), sev)
 	})
 
