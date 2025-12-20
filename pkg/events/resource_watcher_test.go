@@ -133,6 +133,7 @@ func (s *ResourceWatcherTestSuite) TestResourceWatcher_ReceivesPodUpdates() {
 		// Create resource watcher
 		config := events.ResourceWatcherConfig{
 			Clientset:    s.clientset,
+			Cluster:      "test-cluster",
 			ResyncPeriod: 10 * time.Minute,
 		}
 
@@ -180,6 +181,7 @@ func (s *ResourceWatcherTestSuite) TestResourceWatcher_StartStop() {
 
 		config := events.ResourceWatcherConfig{
 			Clientset:    s.clientset,
+			Cluster:      "test-cluster",
 			ResyncPeriod: 10 * time.Minute,
 		}
 
@@ -212,6 +214,7 @@ func (s *ResourceWatcherTestSuite) TestResourceWatcher_HandlesMultiplePodUpdates
 		// Create resource watcher first
 		config := events.ResourceWatcherConfig{
 			Clientset:    s.clientset,
+			Cluster:      "test-cluster",
 			ResyncPeriod: 10 * time.Minute,
 		}
 
@@ -275,6 +278,7 @@ func (s *ResourceWatcherTestSuite) TestResourceWatcher_DefaultResyncPeriod() {
 	s.Run("uses default resync period when not specified", func() {
 		config := events.ResourceWatcherConfig{
 			Clientset:    s.clientset,
+			Cluster:      "test-cluster",
 			ResyncPeriod: 0, // Not specified
 		}
 
@@ -298,6 +302,7 @@ func (s *ResourceWatcherTestSuite) TestResourceWatcher_FaultDetectionPipeline() 
 		// Create resource watcher with detectors
 		config := events.ResourceWatcherConfig{
 			Clientset:    s.clientset,
+			Cluster:      "test-cluster",
 			ResyncPeriod: 10 * time.Minute,
 			Detectors: []events.Detector{
 				detectors.NewPodCrashDetector(),
@@ -407,6 +412,7 @@ func (s *ResourceWatcherTestSuite) TestResourceWatcher_FaultDetectionPipeline() 
 		// Create resource watcher with detectors
 		config := events.ResourceWatcherConfig{
 			Clientset:    s.clientset,
+			Cluster:      "test-cluster",
 			ResyncPeriod: 10 * time.Minute,
 			Detectors: []events.Detector{
 				detectors.NewPodCrashDetector(),
@@ -524,6 +530,7 @@ func (s *ResourceWatcherTestSuite) TestResourceWatcher_FaultDetectionPipeline() 
 		// Create resource watcher with detectors
 		config := events.ResourceWatcherConfig{
 			Clientset:    s.clientset,
+			Cluster:      "test-cluster",
 			ResyncPeriod: 10 * time.Minute,
 			Detectors: []events.Detector{
 				detectors.NewPodCrashDetector(),

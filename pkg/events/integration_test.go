@@ -660,6 +660,7 @@ func (s *IntegrationTestSuite) TestResourceFaultsSubscription() {
 		// Create ResourceWatcher with fault signal callback
 		watcher := NewResourceWatcher(ResourceWatcherConfig{
 			Clientset:    s.clientset,
+			Cluster:      "test-cluster",
 			ResyncPeriod: 10 * time.Minute,
 			Detectors: []Detector{
 				// Only use PodCrashDetector for this test

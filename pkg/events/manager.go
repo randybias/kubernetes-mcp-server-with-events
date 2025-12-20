@@ -397,7 +397,13 @@ func (m *EventSubscriptionManager) sendNotification(sessionID string, logger str
 		klog.Warningf("Failed to send notification to session %s: %v", sessionID, err)
 		return err
 	}
-	klog.V(1).Infof("Sent notification to session %s (logger=%s, level=%s)", sessionID, logger, level)
+
+	// Include faultId in log for fault notifications to aid debugging
+	if faultNotif, ok := data.(ResourceFaultNotification); ok && faultNotif.FaultID != "" {
+		klog.V(1).Infof("Sent notification to session %s (logger=%s, level=%s, faultId=%s)", sessionID, logger, level, faultNotif.FaultID)
+	} else {
+		klog.V(1).Infof("Sent notification to session %s (logger=%s, level=%s)", sessionID, logger, level)
+	}
 	return nil
 }
 
@@ -534,6 +540,7 @@ func (m *EventSubscriptionManager) startResourceWatcher(ctx context.Context, sub
 	// Create the resource watcher with fault signal callback
 	watcher := NewResourceWatcher(ResourceWatcherConfig{
 		Clientset:      clientset,
+		Cluster:        sub.Cluster,
 		ResyncPeriod:   10 * time.Minute,
 		Detectors:      m.detectors,
 		SignalCallback: m.makeFaultSignalCallback(sub),

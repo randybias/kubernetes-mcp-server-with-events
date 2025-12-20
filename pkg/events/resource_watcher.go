@@ -32,6 +32,7 @@ type ResourceWatcher struct {
 	clientset       kubernetes.Interface
 	informerFactory informers.SharedInformerFactory
 	stopChan        chan struct{}
+	cluster         string
 	detectors       []Detector
 	deduplicator    *FaultDeduplicator
 	enricher        *FaultContextEnricher
@@ -41,6 +42,8 @@ type ResourceWatcher struct {
 // ResourceWatcherConfig holds configuration for the resource watcher
 type ResourceWatcherConfig struct {
 	Clientset kubernetes.Interface
+	// Cluster is the name of the cluster being watched (for logging and fault ID generation)
+	Cluster string
 	// ResyncPeriod is the interval for full resync of cached resources.
 	// A resync period of 0 disables resyncing.
 	ResyncPeriod time.Duration
@@ -85,6 +88,7 @@ func NewResourceWatcher(config ResourceWatcherConfig) *ResourceWatcher {
 		clientset:       config.Clientset,
 		informerFactory: informerFactory,
 		stopChan:        make(chan struct{}),
+		cluster:         config.Cluster,
 		detectors:       config.Detectors,
 		deduplicator:    deduplicator,
 		enricher:        enricher,
@@ -257,8 +261,9 @@ func (w *ResourceWatcher) processPodUpdate(ctx context.Context, oldPod, newPod *
 		if w.deduplicator.ShouldEmit(signal) {
 			dedupedSignals = append(dedupedSignals, signal)
 		} else {
-			klog.V(2).Infof("Suppressed duplicate fault signal: %s for %s/%s (container: %s)",
-				signal.FaultType, signal.Namespace, signal.Name, signal.ContainerName)
+			faultID := GenerateFaultID(w.cluster, signal.FaultType, signal.ResourceUID, signal.ContainerName)
+			klog.V(2).Infof("Suppressed duplicate fault signal: %s for %s/%s (container: %s, faultId: %s)",
+				signal.FaultType, signal.Namespace, signal.Name, signal.ContainerName, faultID)
 		}
 	}
 
@@ -310,8 +315,9 @@ func (w *ResourceWatcher) processNodeUpdate(ctx context.Context, oldNode, newNod
 		if w.deduplicator.ShouldEmit(signal) {
 			dedupedSignals = append(dedupedSignals, signal)
 		} else {
-			klog.V(2).Infof("Suppressed duplicate fault signal: %s for Node %s",
-				signal.FaultType, signal.Name)
+			faultID := GenerateFaultID(w.cluster, signal.FaultType, signal.ResourceUID, signal.ContainerName)
+			klog.V(2).Infof("Suppressed duplicate fault signal: %s for Node %s (faultId: %s)",
+				signal.FaultType, signal.Name, faultID)
 		}
 	}
 
@@ -362,8 +368,9 @@ func (w *ResourceWatcher) processDeploymentUpdate(ctx context.Context, oldDeploy
 		if w.deduplicator.ShouldEmit(signal) {
 			dedupedSignals = append(dedupedSignals, signal)
 		} else {
-			klog.V(2).Infof("Suppressed duplicate fault signal: %s for Deployment %s/%s",
-				signal.FaultType, signal.Namespace, signal.Name)
+			faultID := GenerateFaultID(w.cluster, signal.FaultType, signal.ResourceUID, signal.ContainerName)
+			klog.V(2).Infof("Suppressed duplicate fault signal: %s for Deployment %s/%s (faultId: %s)",
+				signal.FaultType, signal.Namespace, signal.Name, faultID)
 		}
 	}
 
@@ -414,8 +421,9 @@ func (w *ResourceWatcher) processJobUpdate(ctx context.Context, oldJob, newJob *
 		if w.deduplicator.ShouldEmit(signal) {
 			dedupedSignals = append(dedupedSignals, signal)
 		} else {
-			klog.V(2).Infof("Suppressed duplicate fault signal: %s for Job %s/%s",
-				signal.FaultType, signal.Namespace, signal.Name)
+			faultID := GenerateFaultID(w.cluster, signal.FaultType, signal.ResourceUID, signal.ContainerName)
+			klog.V(2).Infof("Suppressed duplicate fault signal: %s for Job %s/%s (faultId: %s)",
+				signal.FaultType, signal.Namespace, signal.Name, faultID)
 		}
 	}
 
