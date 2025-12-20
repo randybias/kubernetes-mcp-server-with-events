@@ -489,3 +489,92 @@ func (s *NotificationTestSuite) TestSessionRemoval() {
 		s.Contains(err.Error(), "not found")
 	})
 }
+
+// TestResourceFaultNotification_FaultID tests that FaultID field is present in fault notifications
+func (s *NotificationTestSuite) TestResourceFaultNotification_FaultID() {
+	s.Run("fault notification includes faultId field", func() {
+		session := NewMockServerSession("session1")
+		session.SetLogLevel(mcp.LoggingLevel("warning"))
+		s.server.AddSession(session)
+
+		notification := ResourceFaultNotification{
+			SubscriptionID: "sub-123",
+			Cluster:        "test-cluster",
+			FaultID:        "a1b2c3d4e5f6g7h8",
+			FaultType:      FaultTypeCrashLoop,
+			Severity:       SeverityCritical,
+			Resource: &ResourceReference{
+				APIVersion: "v1",
+				Kind:       "Pod",
+				Name:       "test-pod",
+				Namespace:  "default",
+				UID:        "abc123",
+			},
+			Timestamp: "2025-01-01T00:00:00Z",
+		}
+
+		err := s.manager.sendNotification("session1", LoggerFaults, mcp.LoggingLevel("warning"), notification)
+		s.NoError(err)
+
+		calls := session.GetLogCalls()
+		s.Require().Len(calls, 1)
+
+		data, ok := calls[0].Data.(ResourceFaultNotification)
+		s.True(ok, "data should be ResourceFaultNotification type")
+		s.Equal("a1b2c3d4e5f6g7h8", data.FaultID, "faultId should be present in notification")
+		s.NotEmpty(data.FaultID, "faultId should not be empty")
+	})
+
+	s.Run("fault notification with different faultIds", func() {
+		session := NewMockServerSession("session1")
+		session.SetLogLevel(mcp.LoggingLevel("warning"))
+		s.server.AddSession(session)
+
+		notification1 := ResourceFaultNotification{
+			SubscriptionID: "sub-123",
+			Cluster:        "cluster-1",
+			FaultID:        "fault-id-1",
+			FaultType:      FaultTypeCrashLoop,
+			Severity:       SeverityCritical,
+			Resource: &ResourceReference{
+				Kind: "Pod",
+				Name: "pod-1",
+				UID:  "uid-1",
+			},
+			Timestamp: "2025-01-01T00:00:00Z",
+		}
+
+		notification2 := ResourceFaultNotification{
+			SubscriptionID: "sub-123",
+			Cluster:        "cluster-1",
+			FaultID:        "fault-id-2",
+			FaultType:      FaultTypePodCrash,
+			Severity:       SeverityCritical,
+			Resource: &ResourceReference{
+				Kind: "Pod",
+				Name: "pod-2",
+				UID:  "uid-2",
+			},
+			Timestamp: "2025-01-01T00:01:00Z",
+		}
+
+		err := s.manager.sendNotification("session1", LoggerFaults, mcp.LoggingLevel("warning"), notification1)
+		s.NoError(err)
+
+		err = s.manager.sendNotification("session1", LoggerFaults, mcp.LoggingLevel("warning"), notification2)
+		s.NoError(err)
+
+		calls := session.GetLogCalls()
+		s.Require().Len(calls, 2)
+
+		data1, ok := calls[0].Data.(ResourceFaultNotification)
+		s.True(ok)
+		s.Equal("fault-id-1", data1.FaultID)
+
+		data2, ok := calls[1].Data.(ResourceFaultNotification)
+		s.True(ok)
+		s.Equal("fault-id-2", data2.FaultID)
+
+		s.NotEqual(data1.FaultID, data2.FaultID, "different faults should have different FaultIDs")
+	})
+}

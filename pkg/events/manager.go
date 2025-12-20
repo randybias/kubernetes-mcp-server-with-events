@@ -570,6 +570,7 @@ func (m *EventSubscriptionManager) makeFaultSignalCallback(sub *Subscription) Fa
 		notification := &ResourceFaultNotification{
 			SubscriptionID: sub.ID,
 			Cluster:        sub.Cluster,
+			FaultID:        GenerateFaultID(sub.Cluster, signal.FaultType, signal.ResourceUID, signal.ContainerName),
 			FaultType:      signal.FaultType,
 			Severity:       signal.Severity,
 			Resource: &ResourceReference{

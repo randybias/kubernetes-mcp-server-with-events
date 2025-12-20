@@ -105,6 +105,7 @@ func formatTimestamp(t time.Time) string {
 type ResourceFaultNotification struct {
 	SubscriptionID string             `json:"subscriptionId"`
 	Cluster        string             `json:"cluster"`
+	FaultID        string             `json:"faultId"`
 	FaultType      FaultType          `json:"faultType"`
 	Severity       Severity           `json:"severity"`
 	Resource       *ResourceReference `json:"resource"`
