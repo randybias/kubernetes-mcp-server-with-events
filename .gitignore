@@ -28,3 +28,13 @@ python/build/
 python/dist/
 python/kubernetes_mcp_server.egg-info/
 !python/kubernetes-mcp-server
+
+# AI assistant config directories
+.agent/
+.claude/
+.cursor/
+.gemini/
+.windsurf/
+
+# Scratch/temp files
+scratch/
