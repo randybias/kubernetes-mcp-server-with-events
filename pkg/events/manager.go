@@ -46,7 +46,7 @@ type Subscription struct {
 	ID        string
 	SessionID string
 	Cluster   string
-	Mode      string // "events" or "faults"
+	Mode      string // "events", "faults", or "resource-faults"
 	Filters   SubscriptionFilters
 	Cancel    context.CancelFunc
 	CreatedAt time.Time
@@ -67,12 +67,14 @@ type EventSubscriptionManager struct {
 	config        ManagerConfig
 	getK8sClient  KubernetesClientGetter // function to get Kubernetes client by cluster
 	faultProc     *FaultProcessor        // fault processor for enriching fault events
+	detectors     []Detector             // fault detectors for resource-based fault detection
 }
 
 // NewEventSubscriptionManager creates a new EventSubscriptionManager.
 // The server parameter is used to iterate active sessions for cleanup.
 // The getK8sClient function is used to obtain Kubernetes clients for starting watchers.
-func NewEventSubscriptionManager(server MCPServer, config ManagerConfig, getK8sClient KubernetesClientGetter) *EventSubscriptionManager {
+// The detectors parameter provides fault detectors for resource-based fault detection.
+func NewEventSubscriptionManager(server MCPServer, config ManagerConfig, getK8sClient KubernetesClientGetter, detectors []Detector) *EventSubscriptionManager {
 	return &EventSubscriptionManager{
 		subscriptions: make(map[string]*Subscription),
 		bySession:     make(map[string][]string),
@@ -81,6 +83,7 @@ func NewEventSubscriptionManager(server MCPServer, config ManagerConfig, getK8sC
 		config:        config,
 		getK8sClient:  getK8sClient,
 		faultProc:     NewFaultProcessor(config),
+		detectors:     detectors,
 	}
 }
 
@@ -96,8 +99,8 @@ func (m *EventSubscriptionManager) Create(sessionID, cluster, mode string, filte
 	}
 
 	// Validate mode
-	if mode != "events" && mode != "faults" {
-		return nil, fmt.Errorf("invalid mode: must be 'events' or 'faults'")
+	if mode != "events" && mode != "faults" && mode != "resource-faults" {
+		return nil, fmt.Errorf("invalid mode: must be 'events', 'faults', or 'resource-faults'")
 	}
 
 	// Check session subscription limit
@@ -449,7 +452,7 @@ func (m *EventSubscriptionManager) getCurrentResourceVersion(clientset kubernete
 	return list.ResourceVersion, nil
 }
 
-// startWatcher starts an EventWatcher for the given subscription.
+// startWatcher starts an EventWatcher or ResourceWatcher for the given subscription.
 // This method must be called with the lock held.
 func (m *EventSubscriptionManager) startWatcher(sub *Subscription) error {
 	// Get Kubernetes client for the cluster
@@ -465,6 +468,15 @@ func (m *EventSubscriptionManager) startWatcher(sub *Subscription) error {
 	// The Kubernetes client embeds kubernetes.Interface directly
 	clientset := k8s
 
+	// Create context for the watcher
+	ctx, cancel := context.WithCancel(context.Background())
+	sub.Cancel = cancel
+
+	// Handle resource-faults mode differently (uses ResourceWatcher)
+	if sub.Mode == "resource-faults" {
+		return m.startResourceWatcher(ctx, sub, clientset)
+	}
+
 	// Create deduplication cache based on mode
 	var dedupCache *DeduplicationCache
 	if sub.Mode == "events" {
@@ -473,10 +485,6 @@ func (m *EventSubscriptionManager) startWatcher(sub *Subscription) error {
 		// Faults use their own deduplication logic in FaultProcessor
 		dedupCache = nil
 	}
-
-	// Create context for the watcher
-	ctx, cancel := context.WithCancel(context.Background())
-	sub.Cancel = cancel
 
 	// Determine namespace for watcher
 	namespace := ""
@@ -516,6 +524,81 @@ func (m *EventSubscriptionManager) startWatcher(sub *Subscription) error {
 	klog.V(1).Infof("Started watcher for subscription %s (cluster=%s, mode=%s, namespace=%s)", sub.ID, sub.Cluster, sub.Mode, namespace)
 
 	return nil
+}
+
+// startResourceWatcher starts a ResourceWatcher for resource-based fault detection.
+// This is called for subscriptions with mode="resource-faults".
+func (m *EventSubscriptionManager) startResourceWatcher(ctx context.Context, sub *Subscription, clientset kubernetes.Interface) error {
+	// Use the detectors provided to the manager
+	// If no detectors are configured, return an error
+	if len(m.detectors) == 0 {
+		return fmt.Errorf("no fault detectors configured for resource-faults mode")
+	}
+
+	// Create the resource watcher with fault signal callback
+	watcher := NewResourceWatcher(ResourceWatcherConfig{
+		Clientset:      clientset,
+		ResyncPeriod:   10 * time.Minute,
+		Detectors:      m.detectors,
+		SignalCallback: m.makeFaultSignalCallback(sub),
+	})
+
+	// Start the watcher
+	err := watcher.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start resource watcher: %w", err)
+	}
+
+	klog.V(1).Infof("Started resource watcher for subscription %s (cluster=%s)", sub.ID, sub.Cluster)
+	return nil
+}
+
+// makeFaultSignalCallback creates a callback function for processing fault signals.
+// This callback is invoked by ResourceWatcher when a fault is detected.
+func (m *EventSubscriptionManager) makeFaultSignalCallback(sub *Subscription) FaultSignalCallback {
+	return func(signal FaultSignal) {
+		// Determine APIVersion based on Kind
+		apiVersion := ""
+		switch signal.Kind {
+		case "Pod":
+			apiVersion = "v1"
+		case "Node":
+			apiVersion = "v1"
+		case "Deployment":
+			apiVersion = "apps/v1"
+		case "Job":
+			apiVersion = "batch/v1"
+		}
+
+		// Build notification
+		notification := &ResourceFaultNotification{
+			SubscriptionID: sub.ID,
+			Cluster:        sub.Cluster,
+			FaultType:      signal.FaultType,
+			Severity:       signal.Severity,
+			Resource: &ResourceReference{
+				APIVersion: apiVersion,
+				Kind:       signal.Kind,
+				Name:       signal.Name,
+				Namespace:  signal.Namespace,
+				UID:        string(signal.ResourceUID),
+			},
+			Context:   signal.Context,
+			Timestamp: formatTimestamp(signal.Timestamp),
+		}
+
+		// Send notification
+		err := m.sendNotification(sub.SessionID, LoggerResourceFaults, mcp.LoggingLevel("warning"), notification)
+		if err != nil {
+			// Any error sending notification means the session is dead - cancel immediately
+			klog.V(1).Infof("Session %s unreachable (error: %v), cancelling subscription %s", sub.SessionID, err, sub.ID)
+			go func() {
+				if cancelErr := m.CancelBySessionAndID(sub.SessionID, sub.ID); cancelErr != nil {
+					klog.V(2).Infof("Failed to auto-cancel subscription %s: %v", sub.ID, cancelErr)
+				}
+			}()
+		}
+	}
 }
 
 // makeProcessEventFunc creates a callback function for processing events based on subscription mode

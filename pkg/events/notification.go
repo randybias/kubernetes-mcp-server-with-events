@@ -101,9 +101,30 @@ func formatTimestamp(t time.Time) string {
 	return t.Format(time.RFC3339)
 }
 
+// ResourceFaultNotification represents the notification payload for kubernetes/resource-faults
+type ResourceFaultNotification struct {
+	SubscriptionID string             `json:"subscriptionId"`
+	Cluster        string             `json:"cluster"`
+	FaultType      FaultType          `json:"faultType"`
+	Severity       Severity           `json:"severity"`
+	Resource       *ResourceReference `json:"resource"`
+	Context        string             `json:"context,omitempty"`
+	Timestamp      string             `json:"timestamp"`
+}
+
+// ResourceReference contains information about the affected resource
+type ResourceReference struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	Namespace  string `json:"namespace,omitempty"`
+	UID        string `json:"uid"`
+}
+
 // Logger name constants for notification delivery
 const (
 	LoggerEvents            = "kubernetes/events"
 	LoggerFaults            = "kubernetes/faults"
+	LoggerResourceFaults    = "kubernetes/resource-faults"
 	LoggerSubscriptionError = "kubernetes/subscription_error"
 )

@@ -609,3 +609,157 @@ func (s *IntegrationTestSuite) TestGetCurrentResourceVersionBehavior() {
 		s.NotEqual(rv1, rv2, "resource version should change after creating event")
 	})
 }
+
+// TestResourceFaultsSubscription tests resource-based fault detection subscription
+func (s *IntegrationTestSuite) TestResourceFaultsSubscription() {
+	s.Run("resource-faults subscription detects pod crash and emits notification", func() {
+		ctx := context.Background()
+		namespace := "default"
+
+		// Create a pod that will be updated to simulate a crash
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "crash-test-pod",
+				Namespace: namespace,
+			},
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{
+						Name:  "test-container",
+						Image: "nginx:latest",
+					},
+				},
+			},
+			Status: v1.PodStatus{
+				Phase: v1.PodRunning,
+				ContainerStatuses: []v1.ContainerStatus{
+					{
+						Name:         "test-container",
+						Ready:        true,
+						RestartCount: 0,
+						State: v1.ContainerState{
+							Running: &v1.ContainerStateRunning{
+								StartedAt: metav1.Now(),
+							},
+						},
+					},
+				},
+			},
+		}
+
+		// Create the pod
+		createdPod, err := s.clientset.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
+		s.Require().NoError(err, "failed to create test pod")
+
+		// Wait for pod to be established
+		time.Sleep(100 * time.Millisecond)
+
+		// Create a channel to receive fault signals
+		receivedSignals := make(chan FaultSignal, 10)
+
+		// Create ResourceWatcher with fault signal callback
+		watcher := NewResourceWatcher(ResourceWatcherConfig{
+			Clientset:    s.clientset,
+			ResyncPeriod: 10 * time.Minute,
+			Detectors: []Detector{
+				// Only use PodCrashDetector for this test
+				&integrationTestMockDetector{
+					detectFunc: func(oldObj, newObj interface{}) []FaultSignal {
+						// Detect pod crash by checking RestartCount increase
+						oldPod, oldOK := oldObj.(*v1.Pod)
+						newPod, newOK := newObj.(*v1.Pod)
+						if !oldOK || !newOK {
+							return []FaultSignal{}
+						}
+
+						// Check if any container has restarted
+						for i, newStatus := range newPod.Status.ContainerStatuses {
+							if i < len(oldPod.Status.ContainerStatuses) {
+								oldStatus := oldPod.Status.ContainerStatuses[i]
+								if newStatus.RestartCount > oldStatus.RestartCount {
+									return []FaultSignal{
+										{
+											FaultType:     FaultTypePodCrash,
+											ResourceUID:   newPod.UID,
+											Kind:          "Pod",
+											Name:          newPod.Name,
+											Namespace:     newPod.Namespace,
+											ContainerName: newStatus.Name,
+											Severity:      SeverityWarning,
+											Context:       "Container crashed",
+											Timestamp:     time.Now(),
+										},
+									}
+								}
+							}
+						}
+						return []FaultSignal{}
+					},
+				},
+			},
+			SignalCallback: func(signal FaultSignal) {
+				receivedSignals <- signal
+			},
+		})
+
+		// Start the watcher
+		watcherCtx, cancelWatcher := context.WithCancel(ctx)
+		defer cancelWatcher()
+
+		err = watcher.Start(watcherCtx)
+		s.Require().NoError(err, "failed to start resource watcher")
+
+		// Wait for watcher to sync
+		time.Sleep(500 * time.Millisecond)
+
+		// Update pod to simulate a crash (increase RestartCount)
+		createdPod.Status.ContainerStatuses[0].RestartCount = 1
+		createdPod.Status.ContainerStatuses[0].State = v1.ContainerState{
+			Waiting: &v1.ContainerStateWaiting{
+				Reason:  "CrashLoopBackOff",
+				Message: "Back-off restarting failed container",
+			},
+		}
+		createdPod.Status.ContainerStatuses[0].LastTerminationState = v1.ContainerState{
+			Terminated: &v1.ContainerStateTerminated{
+				ExitCode: 1,
+				Reason:   "Error",
+				Message:  "Container terminated with exit code 1",
+			},
+		}
+
+		_, err = s.clientset.CoreV1().Pods(namespace).UpdateStatus(ctx, createdPod, metav1.UpdateOptions{})
+		s.Require().NoError(err, "failed to update pod status")
+
+		// Wait for fault signal
+		select {
+		case signal := <-receivedSignals:
+			s.Equal(FaultTypePodCrash, signal.FaultType)
+			s.Equal("Pod", signal.Kind)
+			s.Equal("crash-test-pod", signal.Name)
+			s.Equal(namespace, signal.Namespace)
+			s.Equal("test-container", signal.ContainerName)
+			s.Equal(SeverityWarning, signal.Severity)
+			s.NotEmpty(signal.Timestamp)
+		case <-time.After(3 * time.Second):
+			s.Fail("did not receive fault signal for pod crash")
+		}
+
+		// Cleanup
+		cancelWatcher()
+		err = s.clientset.CoreV1().Pods(namespace).Delete(ctx, createdPod.Name, metav1.DeleteOptions{})
+		s.NoError(err, "failed to delete test pod")
+	})
+}
+
+// integrationTestMockDetector is a test detector that uses a custom detect function
+type integrationTestMockDetector struct {
+	detectFunc func(oldObj, newObj interface{}) []FaultSignal
+}
+
+func (m *integrationTestMockDetector) Detect(oldObj, newObj interface{}) []FaultSignal {
+	if m.detectFunc != nil {
+		return m.detectFunc(oldObj, newObj)
+	}
+	return []FaultSignal{}
+}

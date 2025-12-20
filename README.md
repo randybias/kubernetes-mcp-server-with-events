@@ -30,7 +30,7 @@ A powerful and flexible Kubernetes [Model Context Protocol (MCP)](https://blog.m
 - **✅ Namespaces**: List Kubernetes Namespaces.
 - **✅ Events**: View Kubernetes events in all namespaces or in a specific namespace.
   - **Subscribe** to real-time event notifications via HTTP/SSE transport (see [Event Subscriptions](#event-subscriptions) below).
-  - Two subscription modes: flexible event stream and fault watcher with automatic log enrichment.
+  - Three subscription modes: flexible event stream, event-based fault watcher with log enrichment, and resource-based fault detection with state monitoring.
 - **✅ Projects**: List OpenShift Projects.
 - **☸️ Helm**:
   - **Install** a Helm chart in the current or provided namespace.
@@ -260,11 +260,13 @@ Before receiving event notifications, clients **must** call the `logging/setLeve
 
 ### Subscription Modes
 
-Two subscription modes are available:
+Three subscription modes are available:
 
 1. **Flexible Event Stream** (`mode=events`): Receive notifications for all matching events (Normal and/or Warning events based on filters). Ideal for monitoring general cluster activity.
 
 2. **Fault Watcher** (`mode=faults`): Receive notifications for Warning events only, with automatic pod log enrichment. When a Warning event targets a Pod, the server automatically captures current and previous container logs, detects panics/crashes, and includes this information in the notification. This mode is optimized for troubleshooting and incident response.
+
+3. **Resource-Based Fault Detection** (`mode=resource-faults`): Receive notifications for resource state-based fault detection. This mode watches Kubernetes resources (Pods, Nodes, Deployments, Jobs) directly using Informers instead of Event resources. Faults are detected through state transitions (e.g., Pod RestartCount increases, CrashLoopBackOff, Node Ready condition changes, Deployment ProgressDeadlineExceeded). Provides higher signal-to-noise ratio, semantic deduplication to prevent notification storms, and intelligent context extraction (termination messages before log fetching). Ideal for reliable fault monitoring with minimal false positives.
 
 ### Subscription Filters
 
@@ -349,6 +351,25 @@ Event notifications are delivered via `notifications/message` with structured da
       "sample": "panic: runtime error\nstack trace...\n"
     }
   ]
+}
+```
+
+**Resource-Based Fault Detection** (logger: `kubernetes/resource-faults`, level: `warning`):
+```json
+{
+  "subscriptionId": "sub-789",
+  "cluster": "prod",
+  "faultType": "PodCrash",
+  "severity": "warning",
+  "resource": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "name": "nginx-123",
+    "namespace": "default",
+    "uid": "abc-123"
+  },
+  "context": "Container crashed with exit code 137, reason: OOMKilled, message: ...",
+  "timestamp": "2025-01-15T12:34:56Z"
 }
 ```
 

@@ -22,7 +22,7 @@ func (s *ManagerTestSuite) SetupTest() {
 	s.server = NewMockMCPServer()
 	s.config = NewTestManagerConfig()
 	// For tests, use nil getK8sClient since we don't start watchers
-	s.manager = NewEventSubscriptionManager(s.server, s.config, nil)
+	s.manager = NewEventSubscriptionManager(s.server, s.config, nil, nil)
 }
 
 func TestManagerSuite(t *testing.T) {

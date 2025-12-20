@@ -15,6 +15,7 @@ import (
 	"github.com/containers/kubernetes-mcp-server/pkg/api"
 	"github.com/containers/kubernetes-mcp-server/pkg/config"
 	"github.com/containers/kubernetes-mcp-server/pkg/events"
+	"github.com/containers/kubernetes-mcp-server/pkg/events/detectors"
 	internalk8s "github.com/containers/kubernetes-mcp-server/pkg/kubernetes"
 	"github.com/containers/kubernetes-mcp-server/pkg/output"
 	"github.com/containers/kubernetes-mcp-server/pkg/prompts"
@@ -135,7 +136,15 @@ func NewServer(configuration Configuration, oidcProvider *oidc.Provider, httpCli
 	getK8sClient := func(cluster string) (*internalk8s.Kubernetes, error) {
 		return s.p.GetDerivedKubernetes(context.Background(), cluster)
 	}
-	s.eventManager = events.NewEventSubscriptionManager(mcpAdapter, events.DefaultManagerConfig(), getK8sClient)
+	// Create default set of fault detectors for resource-based fault detection
+	faultDetectors := []events.Detector{
+		detectors.NewPodCrashDetector(),
+		detectors.NewCrashLoopDetector(),
+		detectors.NewNodeUnhealthyDetector(),
+		detectors.NewDeploymentFailureDetector(),
+		detectors.NewJobFailureDetector(),
+	}
+	s.eventManager = events.NewEventSubscriptionManager(mcpAdapter, events.DefaultManagerConfig(), getK8sClient, faultDetectors)
 	s.eventAdapter = &events.ManagerAdapter{EventSubscriptionManager: s.eventManager}
 
 	return s, nil
