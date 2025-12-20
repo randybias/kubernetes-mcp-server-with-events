@@ -29,12 +29,12 @@ Verify that single pod crashes are detected and emit fault notifications with te
    npx @modelcontextprotocol/inspector ./kubernetes-mcp-server
    ```
 
-2. **Create a subscription with mode="resource-faults":**
+2. **Create a subscription with mode="faults":**
    - In the MCP inspector UI, call the `events_subscribe` tool
    - Parameters:
      ```json
      {
-       "mode": "resource-faults",
+       "mode": "faults",
        "namespace": "default"
      }
      ```
@@ -48,7 +48,7 @@ Verify that single pod crashes are detected and emit fault notifications with te
 4. **Verify notification received:**
    - Watch the MCP inspector logs
    - Should see a notification with:
-     - `logger="kubernetes/resource-faults"`
+     - `logger="kubernetes/faults"`
      - `level="warning"`
      - `faultType="PodCrash"`
      - `severity="warning"`
@@ -91,7 +91,7 @@ Verify that CrashLoopBackOff is detected and only ONE notification is emitted (d
 4. **Verify SINGLE notification received:**
    - Watch the MCP inspector logs
    - Should see ONE notification with:
-     - `logger="kubernetes/resource-faults"`
+     - `logger="kubernetes/faults"`
      - `level="warning"`
      - `faultType="CrashLoop"`
      - `severity="critical"`

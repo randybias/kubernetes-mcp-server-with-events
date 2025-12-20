@@ -44,8 +44,8 @@ func initEvents() []api.ServerTool {
 				Properties: map[string]*jsonschema.Schema{
 					"mode": {
 						Type:        "string",
-						Description: "Subscription mode: 'events' for all events (default), 'faults' for Warning events with automatic pod log enrichment, 'resource-faults' for resource-based fault detection",
-						Enum:        []any{"events", "faults", "resource-faults"},
+						Description: "Subscription mode: 'events' for all events (default), 'faults' for resource-based fault detection with edge-triggered state change notifications",
+						Enum:        []any{"events", "faults"},
 						Default:     json.RawMessage(`"events"`),
 					},
 					"namespaces": {

@@ -184,7 +184,7 @@ func (s *NotificationTestSuite) TestCorrectLoggerNames() {
 
 	s.Run("uses correct logger name for faults", func() {
 		session := NewMockServerSession("session1")
-		session.SetLogLevel(mcp.LoggingLevel("info"))
+		session.SetLogLevel(mcp.LoggingLevel("warning"))
 		s.server.AddSession(session)
 
 		notification := EventNotification{

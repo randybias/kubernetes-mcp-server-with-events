@@ -101,7 +101,7 @@ func formatTimestamp(t time.Time) string {
 	return t.Format(time.RFC3339)
 }
 
-// ResourceFaultNotification represents the notification payload for kubernetes/resource-faults
+// ResourceFaultNotification represents the notification payload for kubernetes/faults
 type ResourceFaultNotification struct {
 	SubscriptionID string             `json:"subscriptionId"`
 	Cluster        string             `json:"cluster"`
@@ -125,6 +125,5 @@ type ResourceReference struct {
 const (
 	LoggerEvents            = "kubernetes/events"
 	LoggerFaults            = "kubernetes/faults"
-	LoggerResourceFaults    = "kubernetes/resource-faults"
 	LoggerSubscriptionError = "kubernetes/subscription_error"
 )

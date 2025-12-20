@@ -46,7 +46,7 @@ type Subscription struct {
 	ID        string
 	SessionID string
 	Cluster   string
-	Mode      string // "events", "faults", or "resource-faults"
+	Mode      string // "events" or "faults"
 	Filters   SubscriptionFilters
 	Cancel    context.CancelFunc
 	CreatedAt time.Time
@@ -66,7 +66,6 @@ type EventSubscriptionManager struct {
 	server        MCPServer                // for accessing sessions
 	config        ManagerConfig
 	getK8sClient  KubernetesClientGetter // function to get Kubernetes client by cluster
-	faultProc     *FaultProcessor        // fault processor for enriching fault events
 	detectors     []Detector             // fault detectors for resource-based fault detection
 }
 
@@ -82,7 +81,6 @@ func NewEventSubscriptionManager(server MCPServer, config ManagerConfig, getK8sC
 		server:        server,
 		config:        config,
 		getK8sClient:  getK8sClient,
-		faultProc:     NewFaultProcessor(config),
 		detectors:     detectors,
 	}
 }
@@ -99,8 +97,8 @@ func (m *EventSubscriptionManager) Create(sessionID, cluster, mode string, filte
 	}
 
 	// Validate mode
-	if mode != "events" && mode != "faults" && mode != "resource-faults" {
-		return nil, fmt.Errorf("invalid mode: must be 'events', 'faults', or 'resource-faults'")
+	if mode != "events" && mode != "faults" {
+		return nil, fmt.Errorf("invalid mode: must be 'events' or 'faults'")
 	}
 
 	// Check session subscription limit
@@ -472,18 +470,16 @@ func (m *EventSubscriptionManager) startWatcher(sub *Subscription) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	sub.Cancel = cancel
 
-	// Handle resource-faults mode differently (uses ResourceWatcher)
-	if sub.Mode == "resource-faults" {
+	// Handle faults mode differently (uses ResourceWatcher)
+	if sub.Mode == "faults" {
 		return m.startResourceWatcher(ctx, sub, clientset)
 	}
 
-	// Create deduplication cache based on mode
+	// Create deduplication cache for events mode
+	// Note: mode="faults" uses ResourceWatcher which has its own deduplication
 	var dedupCache *DeduplicationCache
 	if sub.Mode == "events" {
 		dedupCache = NewDeduplicationCache(m.config.EventDeduplicationWindow)
-	} else {
-		// Faults use their own deduplication logic in FaultProcessor
-		dedupCache = nil
 	}
 
 	// Determine namespace for watcher
@@ -527,12 +523,12 @@ func (m *EventSubscriptionManager) startWatcher(sub *Subscription) error {
 }
 
 // startResourceWatcher starts a ResourceWatcher for resource-based fault detection.
-// This is called for subscriptions with mode="resource-faults".
+// This is called for subscriptions with mode="faults".
 func (m *EventSubscriptionManager) startResourceWatcher(ctx context.Context, sub *Subscription, clientset kubernetes.Interface) error {
 	// Use the detectors provided to the manager
 	// If no detectors are configured, return an error
 	if len(m.detectors) == 0 {
-		return fmt.Errorf("no fault detectors configured for resource-faults mode")
+		return fmt.Errorf("no fault detectors configured for faults mode")
 	}
 
 	// Create the resource watcher with fault signal callback
@@ -588,7 +584,7 @@ func (m *EventSubscriptionManager) makeFaultSignalCallback(sub *Subscription) Fa
 		}
 
 		// Send notification
-		err := m.sendNotification(sub.SessionID, LoggerResourceFaults, mcp.LoggingLevel("warning"), notification)
+		err := m.sendNotification(sub.SessionID, LoggerFaults, mcp.LoggingLevel("warning"), notification)
 		if err != nil {
 			// Any error sending notification means the session is dead - cancel immediately
 			klog.V(1).Infof("Session %s unreachable (error: %v), cancelling subscription %s", sub.SessionID, err, sub.ID)
@@ -601,35 +597,8 @@ func (m *EventSubscriptionManager) makeFaultSignalCallback(sub *Subscription) Fa
 	}
 }
 
-// makeProcessEventFunc creates a callback function for processing events based on subscription mode
+// makeProcessEventFunc creates a callback function for processing events in events mode
 func (m *EventSubscriptionManager) makeProcessEventFunc(ctx context.Context, sub *Subscription, k8s *pkgkubernetes.Kubernetes) func(*v1.Event) {
-	if sub.Mode == "faults" {
-		// Fault mode: enrich with logs
-		return func(event *v1.Event) {
-			faultEvent, err := m.faultProc.ProcessEvent(ctx, k8s, sub.Cluster, sub.ID, event)
-			if err != nil {
-				klog.Warningf("Failed to process fault event for subscription %s: %v", sub.ID, err)
-				return
-			}
-			if faultEvent == nil {
-				// Event was filtered out (not a fault or duplicate)
-				return
-			}
-
-			// Send fault notification
-			err = m.sendNotification(sub.SessionID, LoggerFaults, mcp.LoggingLevel("warning"), faultEvent)
-			if err != nil {
-				// Any error sending notification means the session is dead - cancel immediately
-				klog.V(1).Infof("Session %s unreachable (error: %v), cancelling subscription %s", sub.SessionID, err, sub.ID)
-				go func() {
-					if cancelErr := m.CancelBySessionAndID(sub.SessionID, sub.ID); cancelErr != nil {
-						klog.V(2).Infof("Failed to auto-cancel subscription %s: %v", sub.ID, cancelErr)
-					}
-				}()
-			}
-		}
-	}
-
 	// Events mode: send event notification directly
 	return func(event *v1.Event) {
 		notification := &EventNotification{

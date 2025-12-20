@@ -264,9 +264,7 @@ Three subscription modes are available:
 
 1. **Flexible Event Stream** (`mode=events`): Receive notifications for all matching events (Normal and/or Warning events based on filters). Ideal for monitoring general cluster activity.
 
-2. **Fault Watcher** (`mode=faults`): Receive notifications for Warning events only, with automatic pod log enrichment. When a Warning event targets a Pod, the server automatically captures current and previous container logs, detects panics/crashes, and includes this information in the notification. This mode is optimized for troubleshooting and incident response.
-
-3. **Resource-Based Fault Detection** (`mode=resource-faults`): Receive notifications for resource state-based fault detection. This mode watches Kubernetes resources (Pods, Nodes, Deployments, Jobs) directly using Informers instead of Event resources. Faults are detected through state transitions (e.g., Pod RestartCount increases, CrashLoopBackOff, Node Ready condition changes, Deployment ProgressDeadlineExceeded). Provides higher signal-to-noise ratio, semantic deduplication to prevent notification storms, and intelligent context extraction (termination messages before log fetching). Ideal for reliable fault monitoring with minimal false positives.
+2. **Fault Detection** (`mode=faults`): Receive notifications for resource state-based fault detection. This mode watches Kubernetes resources (Pods, Nodes, Deployments, Jobs) directly using Informers instead of Event resources. Faults are detected through state transitions (e.g., Pod RestartCount increases, CrashLoopBackOff, Node Ready condition changes, Deployment ProgressDeadlineExceeded). Provides higher signal-to-noise ratio, semantic deduplication to prevent notification storms, and intelligent context extraction (termination messages before log fetching). Ideal for reliable fault monitoring with minimal false positives.
 
 ### Subscription Filters
 
@@ -354,7 +352,7 @@ Event notifications are delivered via `notifications/message` with structured da
 }
 ```
 
-**Resource-Based Fault Detection** (logger: `kubernetes/resource-faults`, level: `warning`):
+**Resource-Based Fault Detection** (logger: `kubernetes/faults`, level: `warning`):
 ```json
 {
   "subscriptionId": "sub-789",

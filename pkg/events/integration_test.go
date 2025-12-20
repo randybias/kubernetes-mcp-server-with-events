@@ -612,7 +612,7 @@ func (s *IntegrationTestSuite) TestGetCurrentResourceVersionBehavior() {
 
 // TestResourceFaultsSubscription tests resource-based fault detection subscription
 func (s *IntegrationTestSuite) TestResourceFaultsSubscription() {
-	s.Run("resource-faults subscription detects pod crash and emits notification", func() {
+	s.Run("faults subscription detects pod crash and emits notification", func() {
 		ctx := context.Background()
 		namespace := "default"
 
