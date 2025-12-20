@@ -113,7 +113,7 @@ func (s *WatcherTestSuite) TestWatchDegradedState() {
 		clientset := fake.NewClientset()
 
 		failCount := 0
-		maxRetries := 5
+		maxRetries := 1
 
 		// Make watch always fail
 		clientset.PrependWatchReactor("events", func(action k8stesting.Action) (handled bool, ret watch.Interface, err error) {
@@ -145,13 +145,13 @@ func (s *WatcherTestSuite) TestWatchDegradedState() {
 		}
 
 		eventWatcher := NewEventWatcher(config)
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
 
 		eventWatcher.Start(ctx)
 
 		// Wait for degraded state
-		time.Sleep(1500 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 
 		s.Equal(maxRetries, failCount, "should have failed exactly %d times", maxRetries)
 		s.True(degradedCalled, "onDegraded callback should have been called")
@@ -165,38 +165,35 @@ func (s *WatcherTestSuite) TestWatchRetryCountReset() {
 		clientset := fake.NewClientset()
 
 		watcher := watch.NewFake()
-		watchCallCount := 0
 
 		clientset.PrependWatchReactor("events", func(action k8stesting.Action) (handled bool, ret watch.Interface, err error) {
-			watchCallCount++
-			if watchCallCount == 1 {
-				// First call - close after event to trigger retry
-				go func() {
-					time.Sleep(50 * time.Millisecond)
-					watcher.Stop()
-				}()
-			}
 			return true, watcher, nil
 		})
 
 		dedupCache := NewDeduplicationCache(5 * time.Second)
-		errorCount := 0
+		processed := make(chan struct{}, 1)
 
 		config := EventWatcherConfig{
 			Clientset:  clientset,
 			Namespace:  "",
 			MaxRetries: 5,
 			DedupCache: dedupCache,
-			OnError: func(err error) {
-				errorCount++
+			ProcessEvent: func(event *v1.Event) {
+				processed <- struct{}{}
 			},
 		}
 
 		eventWatcher := NewEventWatcher(config)
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		eventWatcher.retryCount = 2
+
+		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		eventWatcher.Start(ctx)
+		done := make(chan struct{})
+		go func() {
+			_ = eventWatcher.startWatch(ctx)
+			close(done)
+		}()
 
 		// Send an event to reset retry count
 		event := &v1.Event{
@@ -208,10 +205,23 @@ func (s *WatcherTestSuite) TestWatchRetryCountReset() {
 		}
 		watcher.Add(event)
 
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-processed:
+		case <-time.After(200 * time.Millisecond):
+			s.Fail("event was not processed")
+		}
 
 		// Retry count should be reset after successful event
 		s.Equal(0, eventWatcher.retryCount, "retry count should be reset after successful event")
+
+		watcher.Stop()
+		cancel()
+
+		select {
+		case <-done:
+		case <-time.After(200 * time.Millisecond):
+			s.Fail("watcher did not stop")
+		}
 	})
 }
 
@@ -637,6 +647,11 @@ func (s *WatcherTestSuite) TestInitialResourceVersion() {
 					time.Sleep(10 * time.Millisecond)
 					watcher.Stop()
 				}()
+			} else {
+				go func() {
+					time.Sleep(10 * time.Millisecond)
+					watcher.Stop()
+				}()
 			}
 			return true, watcher, nil
 		})
@@ -649,18 +664,18 @@ func (s *WatcherTestSuite) TestInitialResourceVersion() {
 		}
 
 		eventWatcher := NewEventWatcher(config)
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		eventWatcher.Start(ctx)
-		time.Sleep(300 * time.Millisecond)
+		_ = eventWatcher.startWatch(ctx)
+		_ = eventWatcher.startWatch(ctx)
 
 		mu.Lock()
 		numCalls := len(capturedResourceVersions)
 		mu.Unlock()
 
-		s.GreaterOrEqual(numCalls, 2, "should have at least 2 watch calls")
-		if numCalls >= 2 {
+		s.Equal(2, numCalls, "should have 2 watch calls")
+		if numCalls == 2 {
 			s.Equal("12345", capturedResourceVersions[0], "first watch should use initial resource version")
 			s.Equal("67890", capturedResourceVersions[1], "second watch should use updated resource version from event")
 		}

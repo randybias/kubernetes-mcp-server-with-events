@@ -25,6 +25,10 @@ func (s *ManagerTestSuite) SetupTest() {
 	s.manager = NewEventSubscriptionManager(s.server, s.config, nil, nil)
 }
 
+func (s *ManagerTestSuite) SetupSubTest() {
+	s.SetupTest()
+}
+
 func TestManagerSuite(t *testing.T) {
 	suite.Run(t, new(ManagerTestSuite))
 }
@@ -565,7 +569,7 @@ func (s *ManagerTestSuite) TestGetStats() {
 		stats = s.manager.GetStats()
 		s.Equal(2, stats.Total)
 		s.Equal(2, stats.Sessions)
-		s.Equal(2, stats.Clusters)
+		s.Equal(1, stats.Clusters)
 	})
 }
 

@@ -1,7 +1,6 @@
 package events
 
 import (
-	"context"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -20,6 +19,10 @@ func (s *NotificationTestSuite) SetupTest() {
 	s.config = NewTestManagerConfig()
 	// For tests, use nil getK8sClient since we don't start watchers
 	s.manager = NewEventSubscriptionManager(s.server, s.config, nil, nil)
+}
+
+func (s *NotificationTestSuite) SetupSubTest() {
+	s.SetupTest()
 }
 
 func TestNotificationSuite(t *testing.T) {
@@ -345,7 +348,7 @@ func (s *NotificationTestSuite) TestNotificationLogLevel() {
 
 // TestNotificationContext tests that notifications use correct context
 func (s *NotificationTestSuite) TestNotificationContext() {
-	s.Run("uses background context for SSE routing", func() {
+	s.Run("uses timeout context for SSE routing", func() {
 		session := NewMockServerSession("session1")
 		session.SetLogLevel(mcp.LoggingLevel("info"))
 		s.server.AddSession(session)
@@ -361,8 +364,8 @@ func (s *NotificationTestSuite) TestNotificationContext() {
 		calls := session.GetLogCalls()
 		s.Require().Len(calls, 1)
 
-		// Verify context is background context
-		s.Equal(context.Background(), calls[0].Ctx)
+		_, ok := calls[0].Ctx.Deadline()
+		s.True(ok, "expected timeout context")
 	})
 }
 

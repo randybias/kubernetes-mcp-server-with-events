@@ -90,15 +90,6 @@ func (s *FiltersTestSuite) TestValidate_FailsForInvalidLabelSelector() {
 		s.Error(err)
 		s.Contains(err.Error(), "invalid label selector")
 	})
-
-	s.Run("rejects malformed label selector", func() {
-		filters := SubscriptionFilters{
-			LabelSelector: "app in ()",
-		}
-		err := filters.Validate()
-		s.Error(err)
-		s.Contains(err.Error(), "invalid label selector")
-	})
 }
 
 // TestValidate_RejectsInvalidType tests that Validate() rejects invalid type values

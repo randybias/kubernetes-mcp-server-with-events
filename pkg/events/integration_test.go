@@ -709,11 +709,33 @@ func (s *IntegrationTestSuite) TestResourceFaultsSubscription() {
 
 		err = watcher.Start(watcherCtx)
 		s.Require().NoError(err, "failed to start resource watcher")
+		defer watcher.Stop()
 
 		// Wait for watcher to sync
 		time.Sleep(500 * time.Millisecond)
 
 		// Update pod to simulate a crash (increase RestartCount)
+		if len(createdPod.Status.ContainerStatuses) == 0 {
+			createdPod.Status.ContainerStatuses = []v1.ContainerStatus{
+				{
+					Name:         "test-container",
+					Ready:        true,
+					RestartCount: 0,
+					State: v1.ContainerState{
+						Running: &v1.ContainerStateRunning{
+							StartedAt: metav1.Now(),
+						},
+					},
+				},
+			}
+		}
+
+		// Ensure baseline status is stored so the watcher sees an "old" state.
+		createdPod, err = s.clientset.CoreV1().Pods(namespace).UpdateStatus(ctx, createdPod, metav1.UpdateOptions{})
+		s.Require().NoError(err, "failed to set baseline pod status")
+
+		// Allow informer cache to observe the baseline status.
+		time.Sleep(200 * time.Millisecond)
 		createdPod.Status.ContainerStatuses[0].RestartCount = 1
 		createdPod.Status.ContainerStatuses[0].State = v1.ContainerState{
 			Waiting: &v1.ContainerStateWaiting{
