@@ -61,6 +61,126 @@
   },
   {
     "annotations": {
+      "title": "Events: List Subscriptions",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    },
+    "description": "List active event subscriptions for the current session",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "context": {
+          "description": "Optional parameter selecting which context to run the tool in. Defaults to fake-context if not set",
+          "enum": [
+            "extra-cluster",
+            "fake-context"
+          ],
+          "type": "string"
+        }
+      }
+    },
+    "name": "events_list_subscriptions"
+  },
+  {
+    "annotations": {
+      "title": "Events: Subscribe",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": true
+    },
+    "description": "Subscribe to Kubernetes event notifications in real-time. Requires HTTP/SSE transport (start server with --port). Client must call logging/setLevel before receiving notifications.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "context": {
+          "description": "Optional parameter selecting which context to run the tool in. Defaults to fake-context if not set",
+          "enum": [
+            "extra-cluster",
+            "fake-context"
+          ],
+          "type": "string"
+        },
+        "involvedKind": {
+          "description": "Optional involved object kind filter (e.g., 'Pod', 'Deployment')",
+          "type": "string"
+        },
+        "involvedName": {
+          "description": "Optional involved object name filter",
+          "type": "string"
+        },
+        "involvedNamespace": {
+          "description": "Optional involved object namespace filter",
+          "type": "string"
+        },
+        "labelSelector": {
+          "description": "Optional label selector for filtering events by involved object labels (e.g., 'app=nginx,tier=frontend')",
+          "type": "string"
+        },
+        "mode": {
+          "default": "events",
+          "description": "Subscription mode: 'events' for all events (default), 'faults' for resource-based fault detection with edge-triggered state change notifications",
+          "enum": [
+            "events",
+            "faults"
+          ],
+          "type": "string"
+        },
+        "namespaces": {
+          "description": "Optional list of namespaces to watch. If not provided, watches all namespaces (cluster-wide)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "description": "Optional event reason prefix filter (e.g., 'BackOff', 'Failed')",
+          "type": "string"
+        },
+        "type": {
+          "description": "Optional event type filter: 'Normal' or 'Warning'",
+          "enum": [
+            "Normal",
+            "Warning"
+          ],
+          "type": "string"
+        }
+      }
+    },
+    "name": "events_subscribe"
+  },
+  {
+    "annotations": {
+      "title": "Events: Unsubscribe",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    },
+    "description": "Unsubscribe from event notifications by subscription ID",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "context": {
+          "description": "Optional parameter selecting which context to run the tool in. Defaults to fake-context if not set",
+          "enum": [
+            "extra-cluster",
+            "fake-context"
+          ],
+          "type": "string"
+        },
+        "subscriptionId": {
+          "description": "The subscription ID returned by events_subscribe",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subscriptionId"
+      ]
+    },
+    "name": "events_unsubscribe"
+  },
+  {
+    "annotations": {
       "title": "Helm: Install",
       "destructiveHint": false,
       "openWorldHint": true
