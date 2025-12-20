@@ -52,42 +52,6 @@ For `mode="events"` subscriptions, the server SHALL emit notifications using the
 - **WHEN** the server emits both diagnostic log messages and event notifications
 - **THEN** event notifications use `logger="kubernetes/events"` while diagnostic logs use different logger names, enabling clients to filter by logger.
 
-### Requirement: Fault Subscription Tools
-The server SHALL support a `mode="faults"` flow that automatically focuses on Warning events targeting Pods. Fault subscriptions MUST reuse the same lifecycle and filter semantics as flexible subscriptions but SHALL reject `type="Normal"`. Fault subscriptions SHALL only notify on Warning events that occur after the subscription is created, not historical warnings. The subscription response MUST clearly indicate that the mode is `faults` so clients know to expect enriched notifications.
-
-#### Scenario: Create fault subscription
-- **WHEN** a client calls `events_subscribe` with `mode="faults"`, `namespaceSelector=["prod-*"]`, and `labelSelector="app=payments"`
-- **THEN** the tool returns a `subscriptionId` tied to `mode="faults"` and begins monitoring Warning events that match the namespace/label filters from the current point in time forward.
-
-#### Scenario: Historical fault events are filtered out
-- **GIVEN** pods with historical FailedMount warnings from 2 hours ago
-- **WHEN** a client creates a fault subscription
-- **THEN** the client receives NO notifications for the 2-hour-old FailedMount events.
-
-#### Scenario: New fault events are delivered with logs
-- **GIVEN** an active fault subscription
-- **WHEN** a pod generates a new FailedMount warning after subscription creation
-- **THEN** the client receives a fault notification with container logs for that specific warning event.
-
-### Requirement: Fault Notifications and Log Enrichment
-For `mode="faults"` subscriptions, the server SHALL fetch container logs from the relevant Kubernetes API and attach them to notifications. Notifications MUST be published using method `notifications/message` with `logger="kubernetes/faults"` and `level="warning"`. The `data` field MUST include the same `event` fields as the flexible stream plus a `logs` array. For each container, the server MUST attempt to capture both the current logs and `--previous` logs (when available), annotate whether a panic/error signature was detected, and truncate the sample to a maximum of 10KB per container (configurable via `--max-log-bytes-per-container`). A maximum of 5 containers per pod SHALL be included in a single notification (configurable via `--max-containers-per-notification`). Duplicate Warning events for the same `<cluster>/<namespace>/<pod>/<reason>/<count>` combination SHALL NOT trigger redundant log fetches within a 60-second deduplication window. If logs cannot be retrieved (e.g., RBAC denied, pod gone), the payload MUST include an error entry describing the failure instead of silently omitting logs.
-
-#### Scenario: Provide crashloop log bundle
-- **WHEN** a Pod emits a `Warning` event with reason `BackOff`
-- **THEN** the `notifications/message` payload contains `logger="kubernetes/faults"`, `level="warning"`, and a `data` object with at least one log entry with fields `container`, `previous=false`, `hasPanic` flag (true if `panic:` detected), and a truncated log sample spanning the most recent lines.
-
-#### Scenario: Capture previous container logs
-- **WHEN** the same Pod has `--previous` logs available (container restarted)
-- **THEN** the notification `data` object includes an additional log entry where `previous=true`, enabling the agent to inspect the failing run.
-
-#### Scenario: Log capture error reporting
-- **WHEN** the Kubernetes API returns `Forbidden` while fetching logs
-- **THEN** the notification `data` object contains a log entry with `error="forbidden"` (and no sample), allowing the client to react appropriately.
-
-#### Scenario: Deduplicate repeated events
-- **WHEN** identical Warning events fire within the 60-second deduplication window
-- **THEN** the server emits at most one notification with logs for that combination to avoid flooding the client.
-
 ### Requirement: Subscription Lifecycle Management
 The server SHALL tie each subscription to the originating MCP session. Subscriptions MUST be removed automatically when the client unsubscribes, disconnects, or when the server restarts. While a subscription is active, the server MUST stop the underlying Kubernetes watch if the session closes or errors, and it MUST reject attempts to reuse the same subscription id from another session.
 
@@ -164,15 +128,14 @@ The server MUST ensure that event subscriptions (either mode) are only allowed w
 
 The server SHALL use distinct `logger` values to categorize notifications:
 - `"kubernetes/events"` for flexible event stream notifications (`mode=events`)
-- `"kubernetes/faults"` for fault notifications with log enrichment (`mode=faults`)
-- `"kubernetes/resource-faults"` for resource-based fault notifications (`mode=resource-faults`)
+- `"kubernetes/faults"` for resource-based fault notifications (`mode=faults`)
 - `"kubernetes/subscription_error"` for subscription error notifications (watch failures, degraded state)
 
 Clients MAY filter incoming `notifications/message` by `logger` to separate event notifications from other logging traffic.
 
 #### Scenario: Filter notifications by logger
 - **WHEN** a client receives multiple `notifications/message` payloads
-- **THEN** the client can inspect the `logger` field to determine if the notification is an event (`kubernetes/events`), event-based fault (`kubernetes/faults`), resource-based fault (`kubernetes/resource-faults`), subscription error (`kubernetes/subscription_error`), or unrelated logging.
+- **THEN** the client can inspect the `logger` field to determine if the notification is an event (`kubernetes/events`), fault (`kubernetes/faults`), subscription error (`kubernetes/subscription_error`), or unrelated logging.
 
 ### Requirement: Historical Event Filtering
 Subscriptions SHALL start watching from the current Kubernetes resource version to filter out historical events. When `events_subscribe` is called, the server MUST obtain the current resource version from the Kubernetes API before starting the watch. The watch SHALL use this resource version as its starting point, ensuring only events generated after subscription creation are delivered. If obtaining the current resource version fails, the subscription creation MUST fail with a clear error message indicating the reason. This filtering prevents false positives from historical events and ensures AI assistants only respond to events that occur during their monitoring session.
@@ -203,44 +166,44 @@ Subscriptions SHALL start watching from the current Kubernetes resource version 
 
 ### Requirement: Resource-Based Fault Subscription Mode
 
-The server SHALL support a `mode="resource-faults"` subscription that watches Kubernetes resources (Pods, Nodes, Deployments, Jobs) directly using SharedIndexInformers instead of v1.Event resources. This mode MUST detect faults through state transitions (edge-triggered) rather than Event emission. The subscription response MUST indicate `mode="resource-faults"` so clients know to expect resource-based notification payloads.
+The server SHALL support a `mode="faults"` subscription that watches Kubernetes resources (Pods, Nodes, Deployments, Jobs) directly using SharedIndexInformers instead of v1.Event resources. This mode MUST detect faults through state transitions (edge-triggered) rather than Event emission. The subscription response MUST indicate `mode="faults"` so clients know to expect resource-based notification payloads.
 
-#### Scenario: Create resource-faults subscription
-- **WHEN** a client calls `events_subscribe` with `mode="resource-faults"` and namespace/label filters
+#### Scenario: Create faults subscription
+- **WHEN** a client calls `events_subscribe` with `mode="faults"` and namespace/label filters
 - **THEN** the server starts SharedIndexInformers for relevant resource types
-- **AND** returns a `subscriptionId` with `mode="resource-faults"`
+- **AND** returns a `subscriptionId` with `mode="faults"`
 - **AND** begins monitoring for state-based fault signals.
 
 #### Scenario: Detect pod crash via state transition
-- **GIVEN** an active `mode="resource-faults"` subscription
+- **GIVEN** an active `mode="faults"` subscription
 - **WHEN** a Pod's `RestartCount` increases from N to N+1 with a `Terminated` state containing an error
 - **THEN** the server emits a fault notification with `faultType="PodCrash"`
 - **AND** the notification includes the termination message if available.
 
 #### Scenario: Detect CrashLoopBackOff state
-- **GIVEN** an active `mode="resource-faults"` subscription
+- **GIVEN** an active `mode="faults"` subscription
 - **WHEN** a Pod container enters `Waiting` state with `Reason="CrashLoopBackOff"`
 - **THEN** the server emits a fault notification with `faultType="CrashLoop"`
 - **AND** subsequent CrashLoopBackOff signals for the same container are deduplicated as a single active incident.
 
 ### Requirement: Node and Controller Fault Detection
 
-The server SHALL detect faults in Node and controller resources when `mode="resource-faults"` is active. Node faults MUST be detected when the `Ready` condition transitions from `True` to `False` or `Unknown`. Deployment faults MUST be detected when `ProgressDeadlineExceeded` condition becomes true. Job faults MUST be detected when the `Failed` condition is set.
+The server SHALL detect faults in Node and controller resources when `mode="faults"` is active. Node faults MUST be detected when the `Ready` condition transitions from `True` to `False` or `Unknown`. Deployment faults MUST be detected when `ProgressDeadlineExceeded` condition becomes true. Job faults MUST be detected when the `Failed` condition is set.
 
 #### Scenario: Detect node becoming unhealthy
-- **GIVEN** an active `mode="resource-faults"` subscription
+- **GIVEN** an active `mode="faults"` subscription
 - **WHEN** a Node's `Ready` condition changes from `True` to `False`
 - **THEN** the server emits a fault notification with `faultType="NodeUnhealthy"`
 - **AND** the notification includes the condition reason and message.
 
 #### Scenario: Detect deployment progress deadline exceeded
-- **GIVEN** an active `mode="resource-faults"` subscription watching a namespace with a Deployment
+- **GIVEN** an active `mode="faults"` subscription watching a namespace with a Deployment
 - **WHEN** the Deployment gains a `ProgressDeadlineExceeded` condition
 - **THEN** the server emits a fault notification with `faultType="DeploymentFailure"`
 - **AND** the notification includes the deployment name, namespace, and failure reason.
 
 #### Scenario: Detect job failure
-- **GIVEN** an active `mode="resource-faults"` subscription
+- **GIVEN** an active `mode="faults"` subscription
 - **WHEN** a Job's `Failed` condition becomes true
 - **THEN** the server emits a fault notification with `faultType="JobFailure"`.
 
@@ -265,22 +228,16 @@ For Pod faults, the server SHALL extract the termination message from `Pod.Statu
 
 ### Requirement: Resource Fault Notification Format
 
-For `mode="resource-faults"` subscriptions, the server SHALL emit notifications using `notifications/message` with `logger="kubernetes/resource-faults"` and `level="warning"`. The `data` field MUST include: `subscriptionId`, `cluster`, `faultType` (PodCrash, CrashLoop, NodeUnhealthy, DeploymentFailure, JobFailure), `severity` (info, warning, critical), `resource` object (apiVersion, kind, name, namespace, uid), `context` (termination message or logs if fetched), and RFC3339 `timestamp`. The payload structure differs from `mode="faults"` to optimize for state-based signals.
+For `mode="faults"` subscriptions, the server SHALL emit notifications using `notifications/message` with `logger="kubernetes/faults"` and `level="warning"`. The `data` field MUST include: `subscriptionId`, `cluster`, `faultType` (PodCrash, CrashLoop, NodeUnhealthy, DeploymentFailure, JobFailure), `severity` (info, warning, critical), `resource` object (apiVersion, kind, name, namespace, uid), `context` (termination message or logs if fetched), and RFC3339 `timestamp`. The payload structure is optimized for state-based fault signals.
 
 #### Scenario: Resource fault notification payload
 - **WHEN** a Pod crash is detected
-- **THEN** the notification contains `logger="kubernetes/resource-faults"`, `level="warning"`
+- **THEN** the notification contains `logger="kubernetes/faults"`, `level="warning"`
 - **AND** `data` includes `faultType="PodCrash"`, `severity="warning"`, resource reference, and context from termination message.
-
-#### Scenario: Distinguish resource-faults from event-based faults
-- **WHEN** the server has both `mode="faults"` and `mode="resource-faults"` subscriptions active
-- **THEN** event-based faults use `logger="kubernetes/faults"`
-- **AND** resource-based faults use `logger="kubernetes/resource-faults"`
-- **AND** clients can filter by logger to receive only their preferred signal type.
 
 ### Requirement: Semantic Fault Deduplication
 
-For `mode="resource-faults"` subscriptions, the server SHALL deduplicate fault signals using a semantic key based on `(faultType, resourceUID, containerName)` rather than Event UID/Count. Recurring fault signals (such as repeated CrashLoopBackOff) SHALL be grouped into a single "active incident" to prevent notification storms. A fault incident SHALL be considered resolved when the underlying condition clears (e.g., Pod transitions from CrashLoopBackOff to Running).
+For `mode="faults"` subscriptions, the server SHALL deduplicate fault signals using a semantic key based on `(faultType, resourceUID, containerName)` rather than Event UID/Count. Recurring fault signals (such as repeated CrashLoopBackOff) SHALL be grouped into a single "active incident" to prevent notification storms. A fault incident SHALL be considered resolved when the underlying condition clears (e.g., Pod transitions from CrashLoopBackOff to Running).
 
 #### Scenario: Group recurring CrashLoop signals
 - **GIVEN** a Pod repeatedly entering CrashLoopBackOff state
