@@ -38,3 +38,4 @@ python/kubernetes_mcp_server.egg-info/
 
 # Scratch/temp files
 scratch/
+events.test
